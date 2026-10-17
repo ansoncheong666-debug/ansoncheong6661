@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D 會說話的貓貓 Talking Cat 3D</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      font-family: 'Arial', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+      color: white;
+    }
+
+    .game-box {
+      width: 360px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 25px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    /* 3D 渲染畫布容器 */
+    #webgl-container {
+      width: 320px;
+      height: 320px;
+      margin: 0 auto;
+      border-radius: 20px;
+      cursor: grab;
+    }
+    #webgl-container:active {
+      cursor: grabbing;
+    }
+
+    .speech-bubble {
+      background: white;
+      color: #333;
+      border-radius: 15px;
+      padding: 10px 15px;
+      font-weight: bold;
+      font-size: 15px;
+      margin: 15px 0;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+      min-height: 22px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: transform 0.1s, background 0.2s;
+    }
+    button:active { transform: scale(0.95); }
+    
+    .btn-feed { background: #ff6b6b; color: white; }
+    .btn-talk { background: #4ecdc4; color: white; }
+  </style>
+
+  <!-- 引入 Three.js 3D 引擎庫 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div class="game-box">
+  <h2>🐱 3D 掌上萌貓</h2>
+  
+  <!-- 3D 畫面顯示區 -->
+  <div id="webgl-container"></div>
+
+  <div id="status" class="speech-bubble">這是一個真正的 3D 貓頭！用滑鼠拖曳可以轉動它～</div>
+
+  <div class="btn-group">
+    <button class="btn-feed" onclick="feedCat()">餵小魚乾 🐟</button>
+    <button class="btn-talk" onclick="startTalking()">語音複誦 🎙️</button>
+  </div>
+</div>
+
+<script>
+  // --- 1. Three.js 3D 場景初始化 ---
+  const container = document.getElementById('webgl-container');
+  const statusText = document.getElementById('status');
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+  camera.position.z = 6;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  container.appendChild(renderer.domElement);
+
+  // 燈光設定（讓 3D 有立體陰影與光澤）
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+  scene.add(ambientLight);
+
+  const pointLight = new THREE.PointLight(0xffffff, 1);
+  pointLight.position.set(5, 5, 5);
+  scene.add(pointLight);
+
+  // --- 2. 組合 3D 貓貓模型 ---
+  const catGroup = new THREE.Group();
+
+  // 貓頭主體 (3D 球體)
+  const headGeo = new THREE.SphereGeometry(1.2, 32, 32);
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xf39c12, roughness: 0.3 });
+  const head = new THREE.Mesh(headGeo, headMat);
+  catGroup.add(head);
+
+  // 左耳朵 (3D 圓錐體)
+  const earGeo = new THREE.ConeGeometry(0.4, 0.8, 16);
+  const earMat = new THREE.MeshStandardMaterial({ color: 0xd35400 });
+  
+  const leftEar = new THREE.Mesh(earGeo, earMat);
+  leftEar.position.set(-0.7, 1.2, 0);
+  leftEar.rotation.z = -0.2;
+  catGroup.add(leftEar);
+
+  // 右耳朵
+  const rightEar = new THREE.Mesh(earGeo, earMat);
+  rightEar.position.set(0.7, 1.2, 0);
+  rightEar.rotation.z = 0.2;
+  catGroup.add(rightEar);
+
+  // 左眼睛
+  const eyeGeo = new THREE.SphereGeometry(0.15, 16, 16);
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x2d3436 });
+  const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+  leftEye.position.set(-0.4, 0.3, 1.05);
+  catGroup.add(leftEye);
+
+  // 右眼睛
+  const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+  rightEye.position.set(0.4, 0.3, 1.05);
+  catGroup.add(rightEye);
+
+  scene.add(catGroup);
+
+  // --- 3. 3D 互動與動畫循環 ---
+  let isJumping = false;
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    // 讓 3D 貓貓微微呼吸浮動
+    if (!isJumping) {
+      catGroup.position.y = Math.sin(Date.now() * 0.003) * 0.1;
+    }
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // 滑鼠拖曳旋轉 3D 貓頭
+  let isDragging = false;
+  let prevMouseX = 0;
+
+  container.addEventListener('mousedown', (e) => { isDragging = true; prevMouseX = e.clientX; });
+  window.addEventListener('mouseup', () => { isDragging = false; });
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const deltaX = e.clientX - prevMouseX;
+    catGroup.rotation.y += deltaX * 0.01;
+    prevMouseX = e.clientX;
+  });
+
+  // 觸控支援 (手機滑動)
+  container.addEventListener('touchstart', (e) => { isDragging = true; prevMouseX = e.touches[0].clientX; });
+  window.addEventListener('touchend', () => { isDragging = false; });
+  window.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    const deltaX = e.touches[0].clientX - prevMouseX;
+    catGroup.rotation.y += deltaX * 0.01;
+    prevMouseX = e.touches[0].clientX;
+  });
+
+  // --- 4. 遊戲功能互動 ---
+  function feedCat() {
+    statusText.innerText = '😋 3D 貓貓吃到了小魚乾，開心得跳起來！';
+    jumpAnimation();
+  }
+
+  function jumpAnimation() {
+    isJumping = true;
+    let startTime = Date.now();
+    function jump() {
+      let elapsed = (Date.now() - startTime) * 0.005;
+      catGroup.position.y = Math.abs(Math.sin(elapsed)) * 0.8;
+      catGroup.rotation.y += 0.05;
+      if (elapsed < Math.PI) {
+        requestAnimationFrame(jump);
+      } else {
+        catGroup.position.y = 0;
+        isJumping = false;
+      }
+    }
+    jump();
+  }
+
+  // 語音複誦 (Talking Cat 核心)
+  function startTalking() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('請使用 Google Chrome 瀏覽器測試語音功能！');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'zh-TW';
+    statusText.innerText = '🎙️ 3D 貓貓豎起耳朵聽你說話...';
+
+    recognition.start();
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      statusText.innerText = `3D 貓貓學你說：「${transcript}」`;
+      jumpAnimation();
+      speakWithHighPitch(transcript);
+    };
+
+    recognition.onerror = () => {
+      statusText.innerText = '沒聽清楚，再說一次吧！';
+    };
+  }
+
+  function speakWithHighPitch(text) {
+    const synth = window.speechSynthesis;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.pitch = 1.9; // 高音變音
+    utterance.rate = 1.15;
+    synth.speak(utterance);
+  }
+</script>
+
+</body>
+</html>
